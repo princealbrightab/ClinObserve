@@ -1,0 +1,72 @@
+# Laravel / PHP
+/vendor/
+/bootstrap/cache/*.php
+!/bootstrap/cache/.gitkeep
+/storage/*.key
+/storage/app/public/
+/storage/framework/cache/*
+!/storage/framework/cache/.gitkeep
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitkeep
+/storage/framework/views/*
+!/storage/framework/views/.gitkeep
+/storage/logs/*
+!/storage/logs/.gitkeep
+/public/build/
+/public/hot
+/public/storage/
+/public/vendor/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.testing
+!.env.testing.example
+
+# Local tooling / runtime
+/.runtime/
+/.phpunit.cache
+/.phpunit.result.cache
+.phpactor.json
+/auth.json
+
+# Database files
+*.sqlite
+*.sqlite3
+/database/*.sqlite
+/database/*.sqlite3
+
+# Node / frontend
+/node_modules/
+/npm-debug.log*
+/yarn-debug.log*
+/yarn-error.log*
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# IDE / editor metadata
+/.idea/
+/.vscode/
+/.codex/
+/.claude/
+/.cursor/
+/.nova/
+/.zed/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Homestead / local dev
+Homestead.json
+Homestead.yaml
+
+# Miscellaneous generated files
+_ide_helper.php
+phpstorm.meta.php

@@ -1,0 +1,10 @@
+@extends('layouts.app')
+@section('title','Department reports')
+@section('content')
+<div class="page-heading"><div><span class="eyebrow">ACADEMIC ACTIVITY</span><h1>Department reports</h1><p class="text-muted">Understand participation across students and months.</p></div><button class="btn btn-outline-primary" id="print-report">Print report</button></div>
+<div class="content-card"><form class="row g-3 mb-4" method="get"><div class="col-md-4"><x-field name="from" type="date" :value="request('from',now()->startOfYear()->toDateString())" label="From"/></div><div class="col-md-4"><x-field name="to" type="date" :value="request('to',now()->toDateString())" label="To"/></div><input type="hidden" name="student_id" value="{{ request('student_id') }}"><div class="col-md-4 d-flex align-items-center"><button class="btn btn-primary">Apply dates</button></div></form>
+<h2>Student participation</h2><div class="table-responsive"><table class="table"><thead><tr><th>Student</th><th>Encounters</th><th>Unique cases</th><th>Last observed</th><th></th></tr></thead><tbody>@forelse($students as $student)<tr><td><a href="{{ route('hod.students.show',$student) }}">{{ $student->name }}</a></td><td>{{ $student->encounters_count }}</td><td>{{ $student->patients_count }}</td><td>{{ $student->encounters_max_attended_at??'No activity' }}</td><td><a href="{{ route('hod.reports.index',array_merge(request()->only('from','to'),['student_id'=>$student->id])) }}">Monthly detail →</a></td></tr>@empty<tr><td colspan="5">No students.</td></tr>@endforelse</tbody></table></div>{{ $students->links() }}<a href="{{ route('hod.reports.index',request()->only('from','to')) }}">Show all students</a></div>
+<div class="content-card mt-4"><h2>Encounters by month</h2>@foreach($monthly as $month=>$count)<div class="report-bar"><span>{{ $month }}</span><div class="progress" role="progressbar" aria-label="{{ $month }}" aria-valuenow="{{ $count }}" aria-valuemin="0" aria-valuemax="{{ max(1,max($monthly)) }}"><div class="progress-bar" style="width:{{ $count/max(1,max($monthly))*100 }}%"></div></div><strong>{{ $count }}</strong></div>@endforeach</div>
+@endsection
+
+
