@@ -8,7 +8,7 @@ class UserPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->isHod();
+        return $user->isFaculty();
     }
 
     public function create(User $user): bool
@@ -18,7 +18,7 @@ class UserPolicy
 
     public function view(User $user, User $student): bool
     {
-        return $user->isHod() || $user->id === $student->id;
+        return $user->isHod() || $user->id === $student->id || $user->supervises($student);
     }
 
     public function update(User $user, User $student): bool

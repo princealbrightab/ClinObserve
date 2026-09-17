@@ -16,7 +16,7 @@ class AiReviewController extends Controller
 {
     public function index(Request $request, AiReviewService $service): View
     {
-        $reviews = AiReview::with(['encounter.patient', 'requester'])->when(! $request->user()->isHod(), fn ($q) => $q->where('requested_by', $request->user()->id))->latest()->paginate(15);
+        $reviews = AiReview::with(['encounter.patient', 'requester'])->whereHas('encounter', fn ($q) => $q->visibleToProfessor($request->user()))->when($request->user()->isStudent(), fn ($q) => $q->where('requested_by', $request->user()->id))->latest()->paginate(15);
 
         return view('ai.index', ['reviews' => $reviews, 'enabled' => $service->enabled()]);
     }

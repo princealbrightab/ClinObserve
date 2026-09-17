@@ -70,3 +70,6 @@ Homestead.yaml
 # Miscellaneous generated files
 _ide_helper.php
 phpstorm.meta.php
+
+run-migrations.php
+run-seeders.php

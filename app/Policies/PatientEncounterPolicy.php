@@ -9,7 +9,7 @@ class PatientEncounterPolicy
 {
     public function view(User $user, PatientEncounter $encounter): bool
     {
-        return true;
+        return ! $user->isProfessor() || $user->supervises($encounter->student);
     }
 
     public function create(User $user): bool
@@ -24,7 +24,12 @@ class PatientEncounterPolicy
 
     public function privateFeedback(User $user, PatientEncounter $encounter): bool
     {
-        return $user->isHod() || $user->id === $encounter->student_id;
+        return $user->isHod() || $user->id === $encounter->student_id || $user->supervises($encounter->student);
+    }
+
+    public function review(User $user, PatientEncounter $encounter): bool
+    {
+        return $user->isHod() || $user->supervises($encounter->student);
     }
 
     public function requestAi(User $user, PatientEncounter $encounter): bool

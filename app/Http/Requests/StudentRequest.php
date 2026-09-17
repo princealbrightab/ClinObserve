@@ -25,6 +25,7 @@ class StudentRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'max:255'], 'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($student)],
+            'professor_id' => ['nullable', 'integer', Rule::exists('users', 'id')->where('role', 'professor')->where(fn ($query) => $query->where('is_active', true)->orWhere('id', $student?->professor_id))],
             'password' => [$student ? 'prohibited' : 'required', Password::min(12)->letters()->numbers(), 'max:255'],
             'roll_number' => ['required', 'string', 'max:50', Rule::unique('student_profiles')->ignore($student?->studentProfile?->id)],
             'registration_number' => ['nullable', 'string', 'max:100', Rule::unique('student_profiles')->ignore($student?->studentProfile?->id)],

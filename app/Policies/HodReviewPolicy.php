@@ -14,6 +14,6 @@ class HodReviewPolicy
 
     public function update(User $user, HodReview $review): bool
     {
-        return $user->isHod() && $user->id === $review->hod_id;
+        return $user->isFaculty() && $user->id === $review->hod_id && $user->can('review', $review->encounter);
     }
 }

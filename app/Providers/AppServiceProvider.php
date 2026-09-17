@@ -24,6 +24,8 @@ class AppServiceProvider extends ServiceProvider
         Paginator::useBootstrapFive();
         Gate::before(fn (User $user) => ! $user->is_active ? false : null);
         Gate::define('hod', fn (User $user) => $user->isHod());
+        Gate::define('faculty', fn (User $user) => $user->isFaculty());
+        Gate::define('professor', fn (User $user) => $user->isProfessor());
         RateLimiter::for('login', fn (Request $request) => Limit::perMinute(5)->by(strtolower((string) $request->input('email')).'|'.$request->ip()));
         RateLimiter::for('recovery', fn (Request $request) => Limit::perMinute(3)->by($request->ip()));
         RateLimiter::for('ai', fn (Request $request) => [Limit::perMinute(2)->by((string) $request->user()->id), Limit::perDay(20)->by((string) $request->user()->id)]);

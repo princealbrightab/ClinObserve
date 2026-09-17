@@ -18,7 +18,7 @@ class DemoSeeder extends Seeder
             throw new \RuntimeException('Demo seeding is restricted to local/testing environments.');
         }
         DB::transaction(function (): void {
-            $hod = User::firstOrCreate(['email' => 'hod@clinobserve.test'], ['name' => 'Dr. Meera Raman', 'password' => Hash::make('FacultyDemo123!')]);
+            $hod = User::firstOrCreate(['email' => 'hod@clinobserve.test'], ['name' => 'Dr. Meera Raman', 'password' => Hash::make('FacultyDemo123')]);
             if (! $hod->wasRecentlyCreated) {
                 $this->command?->info('Demo accounts already exist; seeding skipped to preserve records.');
 
@@ -30,7 +30,7 @@ class DemoSeeder extends Seeder
             $hod->save();
             $students = [];
             foreach (['Ananya Sharma', 'Arjun Nair', 'Diya Patel', 'Kabir Shah', 'Ishaan Rao', 'Sara Thomas'] as $index => $name) {
-                $student = User::create(['name' => $name, 'email' => 'student'.($index + 1).'@clinobserve.test', 'password' => Hash::make('StudentDemo123!')]);
+                $student = User::create(['name' => $name, 'email' => 'student'.($index + 1).'@clinobserve.test', 'password' => Hash::make('StudentDemo123')]);
                 $student->role = UserRole::Student;
                 $student->is_active = true;
                 $student->must_change_password = false;

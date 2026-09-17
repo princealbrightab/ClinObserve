@@ -15,7 +15,9 @@ class PatientController extends Controller
     public function index(Request $request): View
     {
         $filters = $request->validate(['q' => ['nullable', 'string', 'max:120'], 'gender' => ['nullable', 'in:female,male,other,unknown,undisclosed'], 'condition' => ['nullable', 'string', 'max:150']]);
-        $patients = Patient::query()->withCount('encounters')->withMax('encounters', 'attended_at')
+        $visibleEncounters = fn ($query) => $query->visibleToProfessor($request->user());
+        $patients = Patient::query()->when($request->user()->isProfessor(), fn ($query) => $query->whereHas('encounters', $visibleEncounters))
+            ->withCount(['encounters' => $visibleEncounters])->withMax(['encounters' => $visibleEncounters], 'attended_at')
             ->when($filters['q'] ?? null, fn ($q, $term) => $q->where(fn ($q) => $q->where('display_name', 'like', '%'.$term.'%')->orWhere('case_number', 'like', '%'.$term.'%')))
             ->when($filters['gender'] ?? null, fn ($q, $v) => $q->where('gender', $v))->when($filters['condition'] ?? null, fn ($q, $v) => $q->where('condition', 'like', '%'.$v.'%'))->latest('id')->paginate(12)->withQueryString();
 
@@ -39,10 +41,10 @@ class PatientController extends Controller
         return redirect()->route('patients.show', $patient)->with('success', 'Case created. You can now record an observation.');
     }
 
-    public function show(Patient $patient): View
+    public function show(Request $request, Patient $patient): View
     {
         Gate::authorize('view', $patient);
-        $encounters = $patient->encounters()->with(['student:id,name', 'images'])->latest('attended_at')->latest('id')->paginate(10);
+        $encounters = $patient->encounters()->visibleToProfessor($request->user())->with(['student:id,name', 'images'])->latest('attended_at')->latest('id')->paginate(10);
 
         return view('patients.show', compact('patient', 'encounters'));
     }
@@ -64,6 +66,6 @@ class PatientController extends Controller
             $locked->save();
         });
 
-        return redirect()->route('patients.show',$patient)->with('success','Case updated.');
+        return redirect()->route('patients.show', $patient)->with('success', 'Case updated.');
     }
 }

@@ -15,7 +15,7 @@ class EncounterController extends Controller
 {
     public function index(Request $request): View
     {
-        $encounters = PatientEncounter::with(['patient', 'student'])->when(! $request->user()->isHod(), fn ($q) => $q->where('student_id', $request->user()->id))->latest('attended_at')->latest('id')->paginate(15);
+        $encounters = PatientEncounter::with(['patient', 'student'])->forWorkspace($request->user())->latest('attended_at')->latest('id')->paginate(15);
 
         return view('encounters.index', compact('encounters'));
     }
@@ -57,6 +57,6 @@ class EncounterController extends Controller
     {
         $service->save($request->user(), $encounter->patient, $request->validated(), $request->file('images', []), $encounter);
 
-        return redirect()->route('encounters.show',$encounter)->with('success','Observation updated.');
+        return redirect()->route('encounters.show', $encounter)->with('success', 'Observation updated.');
     }
 }

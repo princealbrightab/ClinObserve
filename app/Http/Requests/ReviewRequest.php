@@ -8,7 +8,7 @@ class ReviewRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->route('hodReview') ? $this->user()->can('update', $this->route('hodReview')) : $this->user()->isHod();
+        return $this->route('hodReview') ? $this->user()->can('update', $this->route('hodReview')) : $this->user()->can('review', $this->route('encounter'));
     }
 
     public function rules(): array

@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EncounterController;
 use App\Http\Controllers\ImageController;
 use App\Http\Controllers\PatientController;
+use App\Http\Controllers\ProfessorController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReviewController;
@@ -47,7 +48,15 @@ Route::middleware(['auth', 'ready'])->group(function (): void {
     Route::get('/ai-reviews/{aiReview}', [AiReviewController::class, 'show'])->name('ai-reviews.show');
     Route::get('/hod-reviews/{hodReview}', [ReviewController::class, 'show'])->name('hod-reviews.show');
     Route::patch('/hod-reviews/{hodReview}', [ReviewController::class, 'update'])->name('hod-reviews.update');
+    Route::prefix('professor')->name('professor.')->middleware('can:professor')->group(function (): void {
+        Route::get('/students', [StudentController::class, 'index'])->name('students.index');
+        Route::get('/students/{student}', [StudentController::class, 'show'])->name('students.show');
+        Route::post('/encounters/{encounter}/reviews', [ReviewController::class, 'store'])->name('reviews.store');
+    });
     Route::prefix('hod')->name('hod.')->middleware('can:hod')->group(function (): void {
+        Route::resource('professors', ProfessorController::class)->except('destroy');
+        Route::patch('/professors/{professor}/status', [ProfessorController::class, 'status'])->name('professors.status.update');
+        Route::put('/professors/{professor}/credentials', [ProfessorController::class, 'credentials'])->name('professors.credentials.update');
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
         Route::resource('students', StudentController::class)->except('destroy')->parameters(['students' => 'student']);
         Route::patch('/students/{student}/status', [StudentController::class, 'status'])->name('students.status.update');
@@ -55,6 +64,6 @@ Route::middleware(['auth', 'ready'])->group(function (): void {
         Route::get('/calendar', CalendarController::class)->name('calendar.index');
         Route::get('/reports', ReportController::class)->name('reports.index');
         Route::get('/ai-reviews', [AiReviewController::class, 'index'])->name('ai-reviews.index');
-        Route::post('/encounters/{encounter}/reviews',[ReviewController::class, 'store'])->name('reviews.store');
+        Route::post('/encounters/{encounter}/reviews', [ReviewController::class, 'store'])->name('reviews.store');
     });
 });

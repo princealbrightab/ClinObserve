@@ -1,6 +1,6 @@
 # ClinObserve — Database Design
 
-Status: implemented version 1 schema on PHP 8.3.33. Migrations and workflows have been exercised on SQLite and MySQL 8.4.3. See PROJECT_PLAN.md for permissions and README.md for installation.
+Status: implemented version 1 schema with professor assignments added on 2026-09-17. The original schema was exercised on SQLite and MySQL 8.4.3; the new assignment migration and professor workflows have been tested on isolated SQLite only. See PROJECT_PLAN.md for permissions and verification limits, and README.md for installation.
 
 ## 1. Conventions and invariants
 
@@ -16,6 +16,7 @@ Status: implemented version 1 schema on PHP 8.3.33. Migrations and workflows hav
 
 ```mermaid
 erDiagram
+    users |o--o{ users : supervises_via_professor_id
     users ||--o| student_profiles : has
     users ||--o{ patients : creates
     users ||--o{ patient_encounters : records
@@ -30,26 +31,36 @@ erDiagram
 
 ## 3. users
 
-Common authentication information for both roles. Extend the existing users migration through a new migration; preserve existing records.
+Common authentication information for HOD, professor, and student roles. Extend the existing users migration through a new migration; preserve existing records.
 
 | Column | Type / default | Meaning |
 | --- | --- | --- |
 | id | BIGINT PK | Account identifier |
-| name | VARCHAR(255) | Student/HOD name |
+| name | VARCHAR(255) | Student/professor/HOD name |
 | email | VARCHAR(255), UNIQUE | Normalize to lowercase; login identifier |
 | email_verified_at | TIMESTAMP ? | Existing Laravel field |
 | password | VARCHAR(255) | Laravel password hash only |
-| role | VARCHAR(16), default student | `hod` or `student`; never student-editable |
+| role | VARCHAR(16), default student | `hod`, `professor`, or `student`; assigned server-side, not editable through account forms |
 | is_active | BOOLEAN, default false | Provisioning service explicitly activates valid accounts |
 | must_change_password | BOOLEAN, default true | Temporary credential flow |
 | remember_token | VARCHAR(100) ? | Existing Laravel remember token |
 | last_login_at | TIMESTAMP ? | Successful login only |
 | created_by | BIGINT ? FK users.id | HOD provisioner; null for initial HOD/bootstrap |
+| professor_id | BIGINT ? FK users.id, ON DELETE SET NULL | Student's current professor; null means unassigned |
 | created_at, updated_at | TIMESTAMP | Audit times |
 
-Indexes: UNIQUE(email), (role, is_active), FK index(created_by). Existing starter accounts receive the restrictive defaults; never infer HOD access from an existing email. Password reset/deactivation removes database sessions and rotates remember_token. Existing HOD role is not editable through student-management endpoints.
+Indexes: UNIQUE(email), (role, is_active), FK index(created_by), (professor_id, role) for assignment queries. The professor foreign key also receives any supporting index required by the database engine. Existing starter accounts receive the restrictive defaults; never infer HOD access from an existing email. Password reset/deactivation removes database sessions and rotates remember_token. Student-management endpoints reject non-student targets; professor-management endpoints reject non-professor targets. Neither workflow can promote an account to HOD.
 
-Relationships: studentProfile hasOne; encounters hasMany through student_id; createdPatients hasMany through created_by; uploadedImages, hodReviews and requestedAiReviews have explicit actor foreign keys.
+Implemented relationships: studentProfile hasOne; professor belongsTo User through professor_id; assignedStudents hasMany through professor_id filtered to student role; encounters hasMany through student_id; hodReviews and requestedAiReviews have explicit actor foreign keys. Patient creation and image upload also reference users through their respective actor columns.
+
+### Professor assignment invariants
+
+- One professor may supervise many students; each student has zero or one current professor. No assignment pivot or assignment-history table is created.
+- `professor_id` is accepted only in HOD student-management requests. A new assignment must reference an active professor-role user. An existing assignment to an inactive professor may be retained when editing the student.
+- The ordinary self-referencing FK enforces account existence, not role or active status; application validation enforces those constraints. Non-student accounts do not receive assignments through the application.
+- Assignment changes update `users.professor_id`; they do not transfer encounter ownership, change review authors, delete feedback, or unlock observations. The current professor gains access to the student's existing and future records; the previous professor loses access, including to previously authored comments.
+- Deactivation preserves assignments while active-account middleware blocks access. There is no account-deletion UI; if a professor is deleted outside normal workflows, this FK sets dependent assignments to null, subject to other restrictive history FKs.
+- New migration: `2026_09_17_094841_add_professor_id_to_users_table.php`. Existing rows receive null without an automatic assignment. Rolling it back drops the assignment column and its data.
 
 ## 4. student_profiles
 
@@ -74,7 +85,7 @@ Indexes: unique keys above; (academic_year, batch). User and profile are created
 
 ## 5. patients
 
-Shared synthetic/de-identified case context. No legal patient name, phone, address, hospital identifier or patient date of birth.
+Shared synthetic/de-identified case context. Professors can view a case only when an assigned student has an encounter for it. Their timelines, encounter counts, and latest attendance aggregates exclude other students' encounters, even on the same case. No legal patient name, phone, address, hospital identifier or patient date of birth.
 
 | Column | Type / default | Meaning |
 | --- | --- | --- |
@@ -148,11 +159,13 @@ File writes and database transactions cannot be atomic together: track newly wri
 | --- | --- | --- |
 | id | BIGINT PK | Faculty comment |
 | encounter_id | BIGINT FK patient_encounters.id | Reviewed observation |
-| hod_id | BIGINT FK users.id | Authenticated HOD author |
+| hod_id | BIGINT FK users.id | Authenticated HOD or professor author; legacy column name retained |
 | comment | TEXT | Required plain text feedback; bounded by validation |
 | created_at, updated_at | TIMESTAMP | Added/last edited times |
 
-Indexes: (encounter_id, created_at, id), (hod_id, created_at). Multiple comments per encounter and HOD are allowed. HOD role is verified server-side. Private access is based on encounter.student_id or HOD role; it does not follow shared case visibility. Only the authoring HOD can change a comment. Version 1 preserves creation/edit timestamps but does not retain previous comment text; append a new comment when a full historical correction is desired.
+Indexes: (encounter_id, created_at, id), (hod_id, created_at). Multiple comments per encounter and faculty author are allowed. The `hod_reviews` table, `HodReview` model, and `hod_id` column also store professor feedback; no duplicate professor-review table is introduced.
+
+HODs can review any student's encounter. Professors can review only currently assigned students; authorization is checked again inside review creation's encounter transaction. Private reads permit the authoring student, their current professor, and all HODs. Shared case visibility alone does not grant feedback access. Only the comment's author may edit it, and a professor must still supervise that student. Version 1 preserves creation/edit timestamps but not previous comment text; append a new comment when the original text must remain in history.
 
 Waiting for faculty feedback means an encounter has no hod_reviews. Compute using relationship existence; do not store a second review-status value that can drift.
 
@@ -178,7 +191,7 @@ Waiting for faculty feedback means an encounter has no hod_reviews. Compute usin
 
 Indexes: UNIQUE(request_key), (encounter_id, created_at, id), (requested_by, created_at, id), (status, created_at). No uniqueness on encounter_id or input_hash: intentional repeat reviews are historical versions. No duplicate student_id column: owner is encounter.student_id; requested_by records the actor and must equal that owner in version 1.
 
-Store neither raw HTTP response nor API keys. structured_response alone is the canonical result. State transition may update a pending row once; finalized rows are immutable. New review attempts insert new rows. Validate JSON shape/size before persistence and render escaped strings. input_snapshot is private and follows the same owner/HOD policy as results.
+Store neither raw HTTP response nor API keys. structured_response alone is the canonical result. State transition may update a pending row once; finalized rows are immutable. New review attempts insert new rows. Validate JSON shape/size before persistence and render escaped strings. input_snapshot is private and follows the same student-owner/current-professor/HOD policy as results. Professors can read assigned students' AI history but cannot initiate requests on their behalf.
 
 On submission, lock encounter, detect/reconcile expired pending attempts, enforce one live pending attempt, and insert; commit before network I/O. Set request expiry longer than HTTP timeout (proposal 60 seconds). Late responses may finalize only rows still pending, preventing revival of expired attempts. Reusing a request_key returns an existing review only after verifying its ownership and encounter match. Apply per-user rate/cost limits independently.
 
@@ -200,17 +213,19 @@ Verify exact existing infrastructure definitions before changing them; they are 
 
 ## 11. Query and integrity checklist
 
-- HOD totals use counts and grouped aggregates; student totals always filter student_id. Unique cases use COUNT(DISTINCT patient_id); repeat visits increase encounter count only.
-- Calendar filtering uses attended_at >= start AND attended_at < end, preserving index use. HOD selection validates student role; student filters cannot override identity.
+- HOD totals use counts and grouped aggregates; student totals always filter student_id. Professor totals scope encounters through students whose professor_id matches the authenticated professor. Unique cases use COUNT(DISTINCT patient_id); repeat visits increase encounter count only.
+- Calendar filtering uses attended_at >= start AND attended_at < end, preserving index use. HOD selection validates student role; professor selection also validates the current assignment; student filters cannot override identity.
 - Case list uses encounter count and maximum attendance aggregates; paginate timeline with stable attended_at/id ordering. Academic attribution selects only name/roll number.
-- Faculty and AI lists scope by encounter ownership before rendering or pagination; never fetch private results then filter in Blade.
+- Faculty and AI lists scope by ownership or current professor assignment before rendering or pagination; never fetch private results then filter in Blade. Direct profile, avatar, encounter, image, faculty-review, and AI-review policies enforce the same assignment boundary.
 - Preserve FK history and avoid cascaded deletion of clinical records. A future retention/purge process must coordinate database rows, private files and backups explicitly.
-- Migration order: extend users; student_profiles; patients; patient_encounters; encounter_images; hod_reviews; ai_reviews. Rollbacks reverse dependent tables first and are destructive to populated academic data.
+- Migration order: extend users; student_profiles; patients; patient_encounters; encounter_images; hod_reviews; ai_reviews; add users.professor_id. Rollbacks reverse dependent tables first and are destructive to populated academic data.
 - Use new migrations rather than rewriting starter migrations. Check existing user rows before adding academic constraints; do not automatically create student profiles without legitimate roll numbers.
 - Test uniqueness, FK rejection, repeated encounters, lock races, private read boundaries, deactivation and report counts. Run full schema/workflow checks on the chosen MySQL/MariaDB engine; SQLite alone does not verify production behavior.
 
 ## 12. Current implementation status
 
-Domain migrations and models are implemented and verified against SQLite and MySQL 8.4.3. MariaDB and a remote production deployment have not been tested.
+The original domain schema was verified against SQLite and MySQL 8.4.3. The professor assignment extension was verified by 13 passing professor-management tests on isolated SQLite, including reassignment, inactive-assignment retention, and access denial for unassigned students. The extension has not been verified on MySQL/MariaDB or deployed remotely.
+
+The configured application database pointed to a missing SQLite file during the 2026-09-17 verification, so the new migration was not applied there. Correct the connection configuration and run `php artisan migrate` against the intended database. Rollback removes assignment data; prefer a forward correction for populated deployments.
 
 

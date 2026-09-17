@@ -2,21 +2,25 @@
 
 ## Implementation status
 
-Implemented on PHP 8.3.33 and Laravel 13.31.0. Controllers, policies, Form Requests, migrations, Bootstrap pages, calendars, reports, optional AI integration, synthetic seeders and the README are present. The original environment inspection below records the starting state.
+Implemented on PHP 8.3.33 and Laravel 13.31.0. Controllers, policies, Form Requests, migrations, Bootstrap pages, calendars, reports, optional AI integration, synthetic seeders and the README are present. Professor account management and student assignments were added on 2026-09-17. The original environment inspection below records the starting state.
 
 Final decisions: Bootstrap 5.3.8 is served locally without a build step; the homepage is a public educational welcome page; AI uses a GET preview before its protected POST; original image filenames are discarded; clinobserve:audit-files performs read-only storage reconciliation. MySQL 8.4.3 runs in a separate project instance on loopback port 33078. Dependencies were resolved for PHP 8.3 at the user's request, superseding the initial PHP 8.5 setup.
 
-Validation: 36 tests pass on PHP 8.3. Browser checks cover HOD login/dashboard, case timeline and student/mobile login/dashboard. No live AI/SMTP request or remote deployment has been made; operators must supply their configuration.
+Historical baseline: 36 tests passed on PHP 8.3. Browser checks covered HOD login/dashboard, case timeline and student/mobile login/dashboard.
+
+Professor extension verification (2026-09-17): the final targeted run passed all 13 professor-management tests with 109 assertions, and Pint passed. The preceding full regression run had 45 passing tests and three existing image-test errors due to missing GD in the local PHP runtime. The full suite was not rerun after the final edge-case addition. Professor browser checks and MySQL/MariaDB verification remain outstanding.
+
+The assignment migration was tested on isolated SQLite but not applied to the configured application database, which pointed to a missing SQLite file. Correct the connection and apply migrations before enabling the new workflow. No live AI/SMTP request or remote deployment has been made; operators must supply their configuration.
 
 ## 1. Purpose and scope
 
-Clinical Patient Case & Student Observation Management System: an academic application for medical students and their Head of Department (HOD).
+Clinical Patient Case & Student Observation Management System: an academic application for medical students, supervising professors, and their Head of Department (HOD).
 
 This application is an academic medical education project and is not intended for clinical diagnosis, treatment, prescribing, emergency decision-making, or replacement of qualified healthcare professionals.
 
 This document records the architecture and implementation sequence. The application is now implemented as summarized above.
 
-Version 1 assumes one college department per installation. All active students share de-identified case records and encounter observations. Student biodata, faculty feedback, and AI feedback have narrower access. Multiple institutions would require a separate tenant design before sharing an installation.
+Version 1 assumes one college department per installation. All active students share de-identified case records and encounter observations. Student biodata, faculty feedback, and AI feedback have narrower access. Professors can view only currently assigned students and their related cases, observations, images, and feedback. HODs retain department-wide administrative access. Multiple institutions would require a separate tenant design before sharing an installation.
 
 ## 2. Environment inspection — 2026-09-15
 
@@ -41,8 +45,8 @@ Sources: [Laravel release policy](https://laravel.com/framework/docs/releases), 
 ## 3. Architecture and modules
 
 - Server-rendered Laravel Blade with Bootstrap 5, responsive sidebar/header, role-specific navigation, accessible forms, validation summaries, flash messages, tables, and pagination.
-- Session authentication using Laravel's authentication, hashing, password broker, and rate limiting. No public registration route. HOD provisions student accounts; initial password must be changed at first login.
-- A `UserRole` backed enum and centralized policies for users, patients, encounters, images, HOD reviews, and AI reviews. `EnsureUserIsActive`, role middleware, and password-change middleware protect authenticated routes.
+- Session authentication using Laravel's authentication, hashing, password broker, and rate limiting. No public registration route. HOD provisions student and professor accounts; initial password must be changed at first login.
+- A `UserRole` backed enum and centralized policies for users, patients, encounters, images, HOD reviews, and AI reviews. `EnsureAccountReady` enforces active accounts and required password changes; `hod`, `professor`, and `faculty` gates separate administrative and review access.
 - Controllers handle HTTP coordination; Form Requests authorize and validate explicit fields. Services own student provisioning, credential reset, encounter persistence, private image storage, AI requests, and report aggregation. Use transactions where multiple records must succeed together.
 - Eloquent relationships and explicit query scopes; eager-load student/patient summaries and use aggregate counts. Blade receives prepared data, with no database queries or substantive business logic.
 - Patient encounters are independent records, not a pivot with a unique student/patient pair. Repeat visits are expected. Case context is shared; encounter observations belong to their author.
@@ -51,85 +55,98 @@ Sources: [Laravel release policy](https://laravel.com/framework/docs/releases), 
 ### Modules and behavior
 
 1. **Authentication:** login/logout, own password change, optional email password recovery through configured SMTP. Generic recovery responses avoid account enumeration. Without mail, HOD credential reset remains available. Deactivation and credential reset invalidate sessions and remember tokens.
-2. **Students:** HOD create/edit/activate/deactivate/reset credentials; detailed profile with own permitted edits. HOD may edit administrative fields. No application UI to create another HOD; initial HOD comes from secure installation provisioning.
+2. **Students:** HOD create/edit/activate/deactivate/reset credentials; detailed profile with own permitted edits. HOD may edit administrative fields and select an optional assigned professor. No application UI to create another HOD; initial HOD comes from secure installation provisioning.
 3. **Patients:** synthetic/de-identified display label, age, gender, admission date, clinical context; searchable paginated list, filters, counts, last encounter, timeline. Creator may correct an unobserved case; once encounters exist, only HOD may correct shared context. No case deletion UI.
-4. **Encounters:** students record summary, symptoms, examination, assessment and learning notes. Owners can edit until the first AI request or faculty review; thereafter the record is locked, with a new encounter used for subsequent observations. HOD comments rather than rewriting student work. No encounter deletion UI.
-5. **Images:** up to five JPEG/PNG/WebP files per encounter, 5 MiB each, bounded dimensions and pixel count. Decode/re-encode with GD to remove metadata; random private Storage paths. Upload/removal follows encounter edit permissions. HOD and active students may view shared encounter images through an authorized controller. Avatars are separately private to the student and HOD.
-6. **Calendar:** server-rendered monthly grid, previous/next month and selected date. Student scope is always the current account; HOD can select a student or all students. Show distinct patients and encounter details for selected day. No paid service or calendar dependency.
-7. **Faculty feedback:** append comments to an encounter; the authoring HOD may edit their comment with updated_at preserved. Other HODs may read/add their own comments. Other students never receive private feedback in HTML, JSON, timelines, reports, or direct routes.
-8. **AI review:** explicit owner-triggered text-only educational review, disabled by default. Every attempt has its own durable record. HOD reads results but cannot initiate a request on a student's behalf in version 1.
-9. **Dashboards/reports:** HOD totals, today/month counts, students active in the last 30 days, recent encounters/AI reviews, encounters without faculty feedback; student unique cases, own encounters/month counts, recent feedback and calendar activity. HOD reports support date/student filters and student/month aggregates. No scheduled appointments are implied by this attendance calendar.
+4. **Encounters:** students record summary, symptoms, examination, assessment and learning notes. Owners can edit until the first AI request or faculty review; thereafter the record is locked, with a new encounter used for subsequent observations. HODs and assigned professors comment rather than rewriting student work. No encounter deletion UI.
+5. **Images:** up to five JPEG/PNG/WebP files per encounter, 5 MiB each, bounded dimensions and pixel count. Decode/re-encode with GD to remove metadata; random private Storage paths. Upload/removal follows encounter edit permissions. HODs and active students may view shared encounter images through an authorized controller; professors may view only assigned students' encounter images. Avatars are separately private to the student, their assigned professor, and HODs.
+6. **Calendar:** server-rendered monthly grid, previous/next month and selected date. Student scope is always the current account; HOD can select any student or all students. Professors can select one assigned student or all their assigned students. Show distinct patients and encounter details for selected day. No paid service or calendar dependency.
+7. **Faculty feedback:** HODs and assigned professors append comments to an encounter using the existing `hod_reviews` table. Only the author may edit a comment; professors must still supervise the student. Creation time is retained and update time changes; previous comment text is not retained. The student, current professor, and all HODs may read the feedback. Unrelated students and professors are denied direct and embedded access.
+8. **AI review:** explicit owner-triggered text-only educational review, disabled by default. Every attempt has its own durable record. HODs and currently assigned professors read results but cannot initiate a request on a student's behalf in version 1.
+9. **Dashboards/reports:** HOD totals, today/month counts, students active in the last 30 days, recent encounters/AI reviews, encounters without faculty feedback; student unique cases, own encounters/month counts, recent feedback and calendar activity. HOD reports support date/student filters and student/month aggregates. Professor dashboards and observation indexes use current assignments; department reports remain HOD-only. No scheduled appointments are implied by this attendance calendar.
+10. **Professors and assignments:** HOD create/edit/activate/deactivate/reset credentials for professor accounts. Each professor can supervise many students; each student has at most one current professor through nullable `users.professor_id`. New assignments require an active professor; existing inactive assignments may be retained. Reassignment changes access to existing and future records without changing authorship, deleting comments, or unlocking encounters. Professors cannot manage accounts or assignments; no assignment-history or bulk-assignment interface is implemented.
 
 ## 4. Authorization matrix
 
-All permissions require an active authenticated account that has completed any required password change. Guests may only use authentication/recovery pages; logout and own password change remain available during forced password change. Deny by default.
+All permissions require an active authenticated account that has completed any required password change. Guests may use the public welcome page and authentication/recovery pages; logout and own password change remain available during forced password change. Deny by default.
 
-| Action | Student (own record) | Student (another student's record) | HOD |
+| Action | Student | Professor | HOD |
 | --- | --- | --- | --- |
-| HOD dashboard / reports / student list | Deny | Deny | Allow |
-| Create student / administrative fields / reset credentials | Deny | Deny | Allow for student targets only |
-| Read full student profile/avatar | Allow | Deny | Allow |
-| Update permitted personal profile fields | Allow | Deny | Allow |
-| Read case and shared observation timeline/images | Allow | Allow | Allow |
-| Create case | Allow | N/A | Allow |
-| Edit case | Creator before first encounter | Deny | Allow |
-| Create encounter | Allow; actor forced server-side | Deny impersonation | Deny impersonation |
-| Edit encounter / add or remove images | Owner, before lock | Deny | Deny |
-| View calendar / observation index | Own only | Deny | Any student or all |
-| View private HOD feedback / AI review | Allow | Deny | Allow |
-| Add HOD feedback | Deny | Deny | Allow |
-| Edit HOD feedback | Deny | Deny | Authoring HOD only |
+| Department dashboard / reports | Deny | Deny | Allow |
+| Student list | Deny | Assigned students only | All students |
+| Create/edit accounts, reset credentials, activate/deactivate | Deny | Deny | Student/professor targets through their respective management routes |
+| Assign, reassign, or unassign students | Deny | Deny | Allow |
+| Read full student profile/avatar | Own only | Assigned students only | Any student |
+| Update personal student profile | Own permitted fields only | Deny | Administrative fields through student management; no other-user personal-profile update route |
+| Read case / observation timeline / images | Shared academic records | Related cases; assigned students' observations/images only | All |
+| Create case | Allow | Deny | Allow |
+| Edit case | Creator before first encounter | No professor case-edit workflow | Allow |
+| Create encounter | Own; actor set server-side | Deny | Deny impersonation |
+| Edit encounter / add or remove images | Owner before lock | Deny | Deny |
+| Calendar / observation index | Own only | Assigned students only | All students |
+| Read private faculty feedback / AI review | Own encounters only | Assigned students only | All |
+| Add faculty feedback | Deny | Assigned students only | Any student |
+| Edit faculty feedback | Deny | Own comment while student remains assigned | Own comment only |
 | Trigger AI review | Own encounter; enabled/configured | Deny | Deny |
-| Delete users/cases/encounters/reviews | Deny | Deny | No version 1 route |
+| Delete accounts/cases/encounters/reviews | Deny | Deny | No version 1 route |
 
-Own editable profile fields: phone, date of birth, gender, address, bio, avatar. HOD manages name/email, roll number, registration number, college/course/department, batch, academic year, joining year and active status. Password updates have a dedicated endpoint requiring current-password verification. Students cannot set role, IDs, ownership, lock timestamps or administrative fields through payloads.
+Own editable profile fields: phone, date of birth, gender, address, bio, avatar. HOD manages name/email, roll number, registration number, college/course/department, batch, academic year, joining year, active status, and professor assignment. Password updates have a dedicated endpoint requiring current-password verification. Students cannot set role, IDs, ownership, lock timestamps or administrative fields through payloads.
 
-Student name and roll number may appear as academic attribution on shared encounters; email, phone, address and full biodata do not. Never globally eager-load private review relations on a shared timeline. Review policy must check ownership through the encounter, including when accessed directly.
+Student name and roll number may appear as academic attribution on shared encounters; email, phone, address and full biodata do not. Never globally eager-load private review relations on a shared timeline. Review policy must check ownership or current professor assignment through the encounter, including when accessed directly. Professors' lists, aggregates, calendars, and shared-patient timelines must be scoped in queries before rendering. An unassigned professor sees no student records, and a previous professor loses access even to feedback they authored.
 
-## 5. Proposed route/page structure
+## 5. Implemented route/page structure
 
-Names shown are canonical proposed names. Resource groups expand into only the stated actions; no destroy action unless explicitly listed.
+Names shown match the implemented named routes. Resource groups expand into only the stated actions; no destroy action unless explicitly listed.
 
 | Method | Path | Name(s) | Access / page |
 | --- | --- | --- | --- |
-| GET | / | home | Redirect to login or role dashboard |
+| GET | / | home | Public educational welcome page |
 | GET, POST | /login | login, login.store | Guest login; throttle POST |
 | POST | /logout | logout | Authenticated; invalidate session, regenerate CSRF token |
 | GET, POST | /forgot-password | password.request, password.email | Guest; optional configured mail |
 | GET | /reset-password/{token} | password.reset | Guest reset form |
 | POST | /reset-password | password.store | Guest, valid password broker token |
-| GET | /dashboard | dashboard | Student dashboard or HOD redirect |
+| GET | /dashboard | dashboard | Dashboard scoped to the authenticated role |
 | GET, PATCH | /profile | profile.edit, profile.update | Own permitted fields |
 | GET, PUT | /password | password.edit, password.update | Own password, including first-login flow |
-| GET | /students/{student}/avatar | students.avatar | Own account or HOD |
+| GET | /students/{student}/avatar | students.avatar | Own account, assigned professor, or HOD |
 | GET, POST | /patients | patients.index, patients.store | Shared list / authorized creation |
 | GET | /patients/create | patients.create | Create form |
 | GET, PATCH | /patients/{patient} | patients.show, patients.update | Timeline / policy-controlled edit |
 | GET | /patients/{patient}/edit | patients.edit | Policy-controlled edit form |
 | GET, POST | /patients/{patient}/encounters/create, /patients/{patient}/encounters | encounters.create, encounters.store | Student; parent bound and ownership assigned server-side |
-| GET | /encounters | encounters.index | Own observations; HOD may filter all |
-| GET, PATCH | /encounters/{encounter} | encounters.show, encounters.update | Shared observation; owner edits while unlocked |
+| GET | /encounters | encounters.index | Own observations, professor assignments, or all observations for HOD |
+| GET, PATCH | /encounters/{encounter} | encounters.show, encounters.update | Shared for students/HOD; assignment-scoped for professors; owner edits while unlocked |
 | GET | /encounters/{encounter}/edit | encounters.edit | Owner while unlocked |
 | POST | /encounters/{encounter}/images | encounter-images.store | Owner while unlocked |
 | GET, DELETE | /encounter-images/{image} | encounter-images.show, encounter-images.destroy | Authorized viewing / owner removal while unlocked |
-| GET | /calendar?month=YYYY-MM&date=YYYY-MM-DD | calendar.index | Own student calendar |
-| GET | /ai-reviews | ai-reviews.index | Own private reviews; disabled mode shows explanation |
+| GET | /calendar?month=YYYY-MM&date=YYYY-MM-DD | calendar.index | Own student calendar; professors may filter assigned students with student_id |
+| GET | /ai-reviews | ai-reviews.index | Own student reviews, professor assignments, or all reviews for HOD |
 | POST | /encounters/{encounter}/ai-reviews | ai-reviews.store | Owner only, CSRF, privacy confirmation, throttle |
-| GET | /ai-reviews/{aiReview} | ai-reviews.show | Owner/HOD only |
+| GET | /encounters/{encounter}/ai-review | ai-reviews.preview | Student owner; minimized text preview |
+| GET | /ai-reviews/{aiReview} | ai-reviews.show | Student owner, assigned professor, or HOD |
+| GET | /professor/students | professor.students.index | Assigned student directory |
+| GET | /professor/students/{student} | professor.students.show | Assigned student profile and observations |
+| POST | /professor/encounters/{encounter}/reviews | professor.reviews.store | Professor feedback on assigned student's encounter |
+| GET, POST | /hod/professors | hod.professors.index, hod.professors.store | HOD professor list/create |
+| GET | /hod/professors/create | hod.professors.create | HOD create form |
+| GET, PATCH | /hod/professors/{professor} | hod.professors.show, hod.professors.update | HOD professor profile / name and email update |
+| GET | /hod/professors/{professor}/edit | hod.professors.edit | HOD edit form |
+| PATCH | /hod/professors/{professor}/status | hod.professors.status.update | HOD activate/deactivate |
+| PUT | /hod/professors/{professor}/credentials | hod.professors.credentials.update | HOD temporary password reset |
 | GET | /hod/dashboard | hod.dashboard | HOD statistics |
 | GET, POST | /hod/students | hod.students.index, hod.students.store | HOD list/create |
 | GET | /hod/students/create | hod.students.create | HOD create form |
-| GET, PATCH | /hod/students/{student} | hod.students.show, hod.students.update | HOD biodata/edit |
+| GET, PATCH | /hod/students/{student} | hod.students.show, hod.students.update | HOD biodata/edit, including professor_id assignment |
 | GET | /hod/students/{student}/edit | hod.students.edit | HOD edit form |
 | PATCH | /hod/students/{student}/status | hod.students.status.update | HOD activate/deactivate |
 | PUT | /hod/students/{student}/credentials | hod.students.credentials.update | HOD temporary password reset |
 | GET | /hod/calendar?student_id=&month=&date= | hod.calendar.index | HOD calendar with student selection |
 | GET | /hod/ai-reviews | hod.ai-reviews.index | HOD review list |
 | POST | /hod/encounters/{encounter}/reviews | hod.reviews.store | HOD add feedback |
-| GET, PATCH | /hod-reviews/{hodReview} | hod-reviews.show, hod-reviews.update | Private read / authoring HOD edit |
-| GET | /hod/reports?student_id=&from=&to= | hod.reports.index | HOD aggregates and patient/student drilldowns |
+| GET, PATCH | /hod-reviews/{hodReview} | hod-reviews.show, hod-reviews.update | Private read / author-only edit, with current assignment required for professors |
+| GET | /hod/reports?student_id=&from=&to= | hod.reports.index | HOD student and monthly aggregates |
 
-Declare literal create/edit routes correctly relative to dynamic bindings. Student parameters must resolve only to student accounts. Validate date ranges and allow-list sorting/filter values. Binding an ID does not authorize it; enforce policies for every object, including image-to-encounter ownership and direct review endpoints.
+Declare literal create/edit routes correctly relative to dynamic bindings. Student management parameters must target student accounts; professor management parameters must target professor accounts. Validate date ranges and allow-list sorting/filter values. Binding an ID does not authorize it; enforce policies for every object, including image-to-encounter ownership and direct review endpoints.
 
 ## 6. Optional AI architecture
 
@@ -170,7 +187,7 @@ Before implementing the adapter, verify current official OpenAI API documentatio
 | tailwindcss, @tailwindcss/vite | Replace during UI phase because the requested design uses Bootstrap |
 | concurrently, @laravel/multiplex | Existing optional local development conveniences, no production requirement |
 
-No auth starter-kit, role-permission package, calendar package, AI SDK, Redis, queue worker, WebSocket service or Docker is needed. Two fixed roles fit enum/policies. Prefer locally served Bootstrap assets: either commit licensed distribution assets or build with npm during development. Production does not run Node. Package installation beyond required Boost is deferred to the corresponding implementation phase.
+No auth starter-kit, role-permission package, calendar package, AI SDK, Redis, queue worker, WebSocket service or Docker is needed. Three fixed roles plus an explicit student-to-professor relationship fit enum/policies; professor access is restricted by current assignment. Prefer locally served Bootstrap assets: either commit licensed distribution assets or build with npm during development. Production does not run Node. Package installation beyond required Boost is deferred to the corresponding implementation phase.
 
 Target a maintained MySQL 8.x or MariaDB release supported by Laravel 13; verify the actual host before migrations. Use InnoDB, utf8mb4 and portable schema types. SQLite is acceptable for fast tests, but also run migration and workflow tests against the selected MySQL/MariaDB engine before release.
 
@@ -191,6 +208,15 @@ Shared hosting: document root must be public/, with .env, vendor and storage out
 | 12 | Dashboards/reports/responsive UI | Correct totals with repeat visits and date filters; privacy of aggregates; desktop/mobile layouts |
 | 13 | Synthetic demo seeder, factories, full security regression | All specified authorization workflows; MySQL/MariaDB migrations; file and provider tests isolated; Composer audit |
 | 14 | README and deployment walkthrough | Fresh installation, AI off demonstration, build/deploy/restore instructions and local-only demo credentials verified |
+| 15 | Professor accounts, student assignments, and scoped faculty reviews | Implemented; 13 targeted tests pass for provisioning, validation, reassignment, inactive assignments, account restrictions, lists, timelines, images, and private feedback. Apply migration and complete host/browser checks before release. |
 
 Run relevant tests after each phase and fix failures before proceeding. Use GD-enabled image test fixtures or checked-in valid fixtures as appropriate. Format modified PHP with Pint. The comprehensive README now documents the completed application and its deployment process.
+
+## 9. Professor extension rollout
+
+1. Back up the intended database and confirm its connection settings. Apply `2026_09_17_094841_add_professor_id_to_users_table.php` with `php artisan migrate`; existing students start unassigned.
+2. As HOD, create professor accounts and assign students through the student create/edit form. No professor demo account is seeded automatically.
+3. Verify a professor can view assigned students, add feedback, and use the scoped dashboard/calendar, while another professor's student and direct record URLs are denied.
+4. Verify reassignment removes the previous professor's access and preserves the student's historical feedback. Deactivation must block account access without clearing assignments.
+5. Run the full suite with GD enabled, test the migration on the intended MySQL/MariaDB host, and complete professor desktop/mobile browser checks. These release checks remain outstanding from the local implementation verification.
 

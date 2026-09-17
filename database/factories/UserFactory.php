@@ -26,6 +26,11 @@ class UserFactory extends Factory
         return $this->state(fn () => ['is_active' => false]);
     }
 
+    public function professor(): static
+    {
+        return $this->state(fn () => ['role' => UserRole::Professor]);
+    }
+
     public function temporaryPassword(): static
     {
         return $this->state(fn () => ['must_change_password' => true]);

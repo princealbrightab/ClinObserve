@@ -15,6 +15,9 @@ class StudentService
             $new = $student === null;
             $student ??= new User;
             $student->fill(collect($data)->only(['name', 'email', 'password'])->all());
+            if (array_key_exists('professor_id', $data)) {
+                $student->professor_id = $data['professor_id'];
+            }
             if ($new) {
                 $student->role = UserRole::Student;
                 $student->created_by = $hod->id;
@@ -22,7 +25,7 @@ class StudentService
                 $student->must_change_password = true;
             }
             $student->save();
-            $student->studentProfile()->updateOrCreate([], collect($data)->except(['name', 'email', 'password'])->all());
+            $student->studentProfile()->updateOrCreate([], collect($data)->except(['name', 'email', 'password', 'professor_id'])->all());
 
             return $student;
         });

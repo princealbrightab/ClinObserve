@@ -20,7 +20,7 @@ class StudentController extends Controller
         Gate::authorize('viewAny', User::class);
         $request->validate(['q' => ['nullable', 'string', 'max:120']]);
         $q = trim((string) $request->query('q'));
-        $students = User::where('role', 'student')->with('studentProfile')->withCount('encounters')
+        $students = User::visibleStudents($request->user())->with(['studentProfile', 'professor'])->withCount('encounters')
             ->when($q, fn ($query) => $query->where(fn ($query) => $query->where('name', 'like', '%'.$q.'%')->orWhere('email', 'like', '%'.$q.'%')->orWhereHas('studentProfile', fn ($query) => $query->where('roll_number', 'like', '%'.$q.'%'))))->orderBy('name')->paginate(15)->withQueryString();
 
         return view('students.index', compact('students', 'q'));
@@ -30,7 +30,7 @@ class StudentController extends Controller
     {
         Gate::authorize('create', User::class);
 
-        return view('students.form', ['student' => new User]);
+        return view('students.form', ['student' => new User, 'professors' => User::where('role', 'professor')->where('is_active', true)->orderBy('name')->get()]);
     }
 
     public function store(StudentRequest $request, StudentService $service): RedirectResponse
@@ -44,7 +44,7 @@ class StudentController extends Controller
     {
         abort_unless($student->isStudent(), 404);
         Gate::authorize('view', $student);
-        $student->load('studentProfile');
+        $student->load(['studentProfile', 'professor']);
         $encounters = $student->encounters()->with('patient')->latest('attended_at')->paginate(10);
 
         return view('students.show', compact('student', 'encounters'));
@@ -55,7 +55,9 @@ class StudentController extends Controller
         Gate::authorize('update', $student);
         $student->load('studentProfile');
 
-        return view('students.form', compact('student'));
+        $professors = User::where('role', 'professor')->where(fn ($query) => $query->where('is_active', true)->orWhere('id', $student->professor_id))->orderBy('name')->get();
+
+        return view('students.form', compact('student', 'professors'));
     }
 
     public function update(StudentRequest $request, User $student, StudentService $service): RedirectResponse

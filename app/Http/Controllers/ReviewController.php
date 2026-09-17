@@ -16,6 +16,7 @@ class ReviewController extends Controller
     {
         DB::transaction(function () use ($request, $encounter): void {
             $locked = PatientEncounter::whereKey($encounter->id)->lockForUpdate()->firstOrFail();
+            Gate::authorize('review', $locked);
             $locked->locked_at ??= now();
             $locked->save();
             $review = $locked->hodReviews()->make($request->validated());

@@ -14,12 +14,12 @@ class PatientPolicy
 
     public function view(User $user, Patient $patient): bool
     {
-        return true;
+        return ! $user->isProfessor() || $patient->encounters()->visibleToProfessor($user)->exists();
     }
 
     public function create(User $user): bool
     {
-        return true;
+        return ! $user->isProfessor();
     }
 
     public function update(User $user, Patient $patient): bool
