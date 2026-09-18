@@ -408,7 +408,20 @@ Important rules:
 
 ---
 
-## 11. Support
+## 11. Hosting maintenance for the site owner
+
+The website is [ClinObserve](https://clinobserve.freedev.app), hosted on InfinityFree. The host does not provide a terminal; migration and seeding operations use the two protected browser pages. These are site-owner tools, separate from ordinary student, professor, and HOD navigation.
+
+1. Follow the **InfinityFree hosting** section in [README.md](README.md) to upload the scripts and their supporting files, protect the application directory, and configure the hosted database and maintenance token in File Manager.
+2. Open [run-migrations.php](https://clinobserve.freedev.app/clinobserve_app/run-migrations.php), enter the token, select **Run pending migrations**, confirm, and submit. Then use **Check migration status**. Opening the link alone does not run a migration.
+3. Open [run-seeder.php](https://clinobserve.freedev.app/clinobserve_app/run-seeder.php) and run **Create initial HOD** if this is a fresh installation. The HOD must change the configured temporary password on first login. Existing HOD accounts are left unchanged.
+4. For a synthetic demonstration, enable hosted demo seeding in File Manager and select **Add synthetic demo students and cases**. This creates two demo professors, six assigned students, eight cases, 24 observations, and eight example comments. It does not contain real patient data.
+5. Use the HOD's account-management pages to reset the desired demo accounts' random passwords before using those accounts. Repeat seeding does not reset passwords or duplicate the demo data.
+6. Disable browser maintenance and remove setup credentials in File Manager after finishing. See README.md for the exact settings and stale-cache removal step.
+
+The migration page also provides **Clear configuration, route and view caches** after code updates. The cache-clearing action does not erase observations or reset the database. The separate **Delete all database tables, migrate and seed** action does erase all existing database data; use it only for an intentional reset after exporting a backup. Enter the new HOD credentials, exact database name, and `RESET DATABASE` confirmation. See README.md for the full reset sequence. If a page says maintenance is disabled or the token is missing, check `BROWSER_MAINTENANCE_ENABLED` and `BROWSER_MAINTENANCE_TOKEN` in the hosted `.env`, then remove `bootstrap/cache/config.php` if present. The local `.env` does not change the hosted site's settings. Do not share the maintenance token with students or professors.
+
+## 12. Support
 
 For operational questions, contact the department administrator or HOD responsible for the system.
 
