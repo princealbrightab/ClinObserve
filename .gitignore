@@ -71,5 +71,5 @@ Homestead.yaml
 _ide_helper.php
 phpstorm.meta.php
 
-# run-migrations.php
-# run-seeders.php
+# Browser maintenance scripts are tracked; credentials belong only in .env.
+/storage/framework/browser-maintenance.lock
