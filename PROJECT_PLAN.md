@@ -10,7 +10,7 @@ Historical baseline: 36 tests passed on PHP 8.3. Browser checks covered HOD logi
 
 Professor extension verification (2026-09-17): the final targeted run passed all 13 professor-management tests with 109 assertions, and Pint passed. The preceding full regression run had 45 passing tests and three existing image-test errors due to missing GD in the local PHP runtime. The full suite was not rerun after the final edge-case addition. Professor browser checks and MySQL/MariaDB verification remain outstanding.
 
-The assignment migration was tested on isolated SQLite but not applied to the configured application database, which pointed to a missing SQLite file. This was a local connection issue, not a diagnosis of the hosted MySQL configuration. On InfinityFree, apply migrations through the protected run-migrations.php browser page. No live AI/SMTP request has been made. The user hosts the application on InfinityFree at https://clinobserve.freedev.app; the updated maintenance scripts have been verified locally, not uploaded or executed on that hosted database.
+The assignment migration was tested on isolated SQLite but not applied to the configured application database, which pointed to a missing SQLite file. Correct the connection and apply migrations before enabling the new workflow. No live AI/SMTP request or remote deployment has been made; operators must supply their configuration.
 
 ## 1. Purpose and scope
 
@@ -191,11 +191,7 @@ No auth starter-kit, role-permission package, calendar package, AI SDK, Redis, q
 
 Target a maintained MySQL 8.x or MariaDB release supported by Laravel 13; verify the actual host before migrations. Use InnoDB, utf8mb4 and portable schema types. SQLite is acceptable for fast tests, but also run migration and workflow tests against the selected MySQL/MariaDB engine before release.
 
-Hosting target: InfinityFree with no SSH or terminal. Public files are served from `htdocs`; the Laravel application is under `htdocs/clinobserve_app`, protected by the project-root `.htaccess`. Prepare production dependencies locally, then upload them with File Manager/FTP. See README.md for the exact layout, front-controller paths, and hosted settings. Keep APP_ENV=production, APP_DEBUG=false, HTTPS cookies, database sessions, file cache, synchronous jobs, and private clinical storage with no public symlink. Browser setup uses native PHP sessions so it can run before the database sessions table exists. Back up with phpMyAdmin and preserve private files when updating.
-
-`run-migrations.php` and `run-seeder.php` replace the required terminal operations with authenticated POST forms. They are disabled by default and require a configured random token of at least 32 characters, HTTPS, session CSRF, and action confirmation. A shared file lock prevents overlapping operations. Migration actions include status, pending migrations, configuration/route/view cache clearing, and an explicit reset-and-seed workflow requested by the site owner. Reset requires the exact database name, typed `RESET DATABASE` confirmation, and validated new HOD credentials before dropping tables/views. It then applies uploaded migrations and both hosted seeders, stopping on any failure. No arbitrary command is exposed; reset is destructive and not atomic. `DeploymentSeeder` provisions the initial HOD only when no HOD exists. HOD credentials may be entered in the protected form instead of stored in `.env`. The separately enabled `HostedDemoSeeder` adds synthetic professor/student assignments and case records with random temporary account passwords, without Faker or other development dependencies. Original local demo seeding remains restricted to local/testing.
-
-Disable the runners and clear setup credentials after use. Changes to hosted `.env` require deleting `bootstrap/cache/config.php` in File Manager if configuration was cached. Do not seed known demo passwords in production.
+Shared hosting: document root must be public/, with .env, vendor and storage outside web access; `composer install --no-dev --optimize-autoloader`, secure APP_KEY, APP_DEBUG=false, HTTPS/secure cookies, writable storage and bootstrap/cache, migrations, config/view caches and prebuilt frontend assets. Use database sessions, file cache and synchronous operations on a single host. Clinical uploads remain on a dedicated private disk with no public symlink. Configure PHP upload/body/time limits consistently. Back up database and private files together and test restore. SMTP is optional for password recovery. Do not seed known demo passwords in production.
 
 ## 8. Implementation phases and acceptance checks
 
@@ -213,23 +209,13 @@ Disable the runners and clear setup credentials after use. Changes to hosted `.e
 | 13 | Synthetic demo seeder, factories, full security regression | All specified authorization workflows; MySQL/MariaDB migrations; file and provider tests isolated; Composer audit |
 | 14 | README and deployment walkthrough | Fresh installation, AI off demonstration, build/deploy/restore instructions and local-only demo credentials verified |
 | 15 | Professor accounts, student assignments, and scoped faculty reviews | Implemented; 13 targeted tests pass for provisioning, validation, reassignment, inactive assignments, account restrictions, lists, timelines, images, and private feedback. Apply migration and complete host/browser checks before release. |
-| 16 | InfinityFree browser maintenance and hosted demonstration seeding | Protected GET forms/POST actions, fixed commands, initial HOD provisioning, opt-in synthetic demo data, idempotent reruns, fresh-database setup without database sessions, and guarded private files. Local tests pass; host upload and live checks remain operator tasks. |
 
 Run relevant tests after each phase and fix failures before proceeding. Use GD-enabled image test fixtures or checked-in valid fixtures as appropriate. Format modified PHP with Pint. The comprehensive README now documents the completed application and its deployment process.
 
-### Browser maintenance entry points
-
-| Page | Available operations | Access |
-| --- | --- | --- |
-| `/clinobserve_app/run-migrations.php` | Migration status, pending migrations, cache clearing, explicit reset/migrate/seed | Enabled maintenance token + HTTPS + POST + session CSRF + confirmation |
-| `/clinobserve_app/run-seeder.php` | Initial HOD; optional hosted demo data | Same protections; demo additionally needs explicit enablement and an active HOD |
-
-These standalone entry points bootstrap the console kernel and do not use the application's login/session middleware. Their dedicated authentication is necessary for a fresh database. Neither page executes commands on GET or accepts a command name from the visitor.
-
 ## 9. Professor extension rollout
 
-1. Back up the intended database and confirm its connection settings. Apply `2026_09_17_094841_add_professor_id_to_users_table.php` through **Run pending migrations** on the protected browser page; existing students start unassigned.
-2. As HOD, create professor accounts and assign students through the student create/edit form. The optional hosted demo action can create two demo professors and six assigned demo students; normal accounts remain HOD-managed.
+1. Back up the intended database and confirm its connection settings. Apply `2026_09_17_094841_add_professor_id_to_users_table.php` with `php artisan migrate`; existing students start unassigned.
+2. As HOD, create professor accounts and assign students through the student create/edit form. No professor demo account is seeded automatically.
 3. Verify a professor can view assigned students, add feedback, and use the scoped dashboard/calendar, while another professor's student and direct record URLs are denied.
 4. Verify reassignment removes the previous professor's access and preserves the student's historical feedback. Deactivation must block account access without clearing assignments.
 5. Run the full suite with GD enabled, test the migration on the intended MySQL/MariaDB host, and complete professor desktop/mobile browser checks. These release checks remain outstanding from the local implementation verification.

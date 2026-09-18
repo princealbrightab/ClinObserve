@@ -222,23 +222,10 @@ Verify exact existing infrastructure definitions before changing them; they are 
 - Use new migrations rather than rewriting starter migrations. Check existing user rows before adding academic constraints; do not automatically create student profiles without legitimate roll numbers.
 - Test uniqueness, FK rejection, repeated encounters, lock races, private read boundaries, deactivation and report counts. Run full schema/workflow checks on the chosen MySQL/MariaDB engine; SQLite alone does not verify production behavior.
 
-## 12. Browser migration and seeding operations
+## 12. Current implementation status
 
-The InfinityFree deployment has no terminal. The protected `run-migrations.php` entry point applies pending migrations using Laravel's console kernel and the normal migrations repository. It can also show migration status and clear configuration/route/view caches. A separately confirmed reset action runs a fixed table/view wipe, migration, initial HOD seeding, and hosted demo seeding sequence. It validates the exact configured database name, typed `RESET DATABASE`, and replacement HOD credentials before deletion. Arbitrary SQL, command names, and rollback actions are not exposed. Reset deletes all tables/views in that database, not only ClinObserve tables, and cannot be rolled back as a unit; uploaded files are retained. Schema changes require a backup; a failed request may leave earlier migrations applied, so check status before retrying.
+The original domain schema was verified against SQLite and MySQL 8.4.3. The professor assignment extension was verified by 13 passing professor-management tests on isolated SQLite, including reassignment, inactive-assignment retention, and access denial for unassigned students. The extension has not been verified on MySQL/MariaDB or deployed remotely.
 
-The browser entry points use native PHP sessions for setup authorization instead of querying the not-yet-created Laravel sessions table. They require explicit enablement, HTTPS, a maintenance token, session CSRF, and POST confirmation, and share a filesystem execution lock. The normal application continues using database sessions so account deactivation and credential reset can revoke them.
-
-`run-seeder.php` exposes two fixed seeders:
-
-- `DeploymentSeeder`: validates the initial HOD name/email/password supplied in the protected form or hosted configuration and creates an active HOD with forced password change only if no HOD exists. It never resets an existing account or promotes a student. User creation runs in a transaction.
-- `HostedDemoSeeder`: requires explicit demo enablement and an active HOD. In one transaction, creates 2 professors, 6 assigned students/profiles, 8 synthetic patients, 24 encounters, and 8 faculty comments. Accounts get random temporary passwords; the HOD resets selected accounts through the normal UI. Repeat runs skip if any reserved hosted demo account already exists, preserving existing data. No new schema or seed-history table is introduced.
-
-The hosted seeder uses direct model persistence without Faker, so a production `vendor` upload can omit development dependencies. It does not run the original local/testing-only `DemoSeeder`. Account/assignment/review invariants still apply, including locked reviewed encounters and private professor-scoped access.
-
-## 13. Current implementation status
-
-The original domain schema was verified against SQLite and MySQL 8.4.3. The professor assignment extension was verified by 13 passing professor-management tests on isolated SQLite, including reassignment, inactive-assignment retention, and access denial for unassigned students. The extension has not been verified by this session against the hosted InfinityFree database.
-
-The configured application database pointed to a missing SQLite file during the 2026-09-17 verification, so the new migration was not applied there. This finding concerns the local setup. For the hosted InfinityFree MySQL database, use **Run pending migrations** in `/clinobserve_app/run-migrations.php`; see README.md for credentials, upload paths, and browser-only steps. Rollback removes assignment data; prefer a forward correction for populated deployments.
+The configured application database pointed to a missing SQLite file during the 2026-09-17 verification, so the new migration was not applied there. Correct the connection configuration and run `php artisan migrate` against the intended database. Rollback removes assignment data; prefer a forward correction for populated deployments.
 
 
