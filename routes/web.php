@@ -55,6 +55,7 @@ Route::middleware(['auth', 'ready'])->group(function (): void {
     });
     Route::prefix('hod')->name('hod.')->middleware('can:hod')->group(function (): void {
         Route::resource('professors', ProfessorController::class)->except('destroy');
+        Route::post('/professors/{professor}/assign-students', [ProfessorController::class, 'assignStudents'])->name('professors.assign-students');
         Route::patch('/professors/{professor}/status', [ProfessorController::class, 'status'])->name('professors.status.update');
         Route::put('/professors/{professor}/credentials', [ProfessorController::class, 'credentials'])->name('professors.credentials.update');
         Route::get('/dashboard', DashboardController::class)->name('dashboard');

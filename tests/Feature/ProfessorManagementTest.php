@@ -61,6 +61,29 @@ class ProfessorManagementTest extends TestCase
         $this->actingAs($second)->get(route('professor.students.show', $student))->assertForbidden();
     }
 
+    public function test_hod_can_assign_unassigned_students_from_professor_page_and_dashboard_reports_missing_assignments(): void
+    {
+        $hod = User::factory()->hod()->create();
+        $professor = User::factory()->professor()->create(['name' => 'Professor Ashok']);
+        $anotherProfessor = User::factory()->professor()->create(['name' => 'Professor Mehta']);
+        $assignedStudent = User::factory()->student()->create(['name' => 'Assigned Learner', 'professor_id' => $professor->id]);
+        $unassignedStudent = User::factory()->student()->create(['name' => 'Unassigned Learner', 'professor_id' => null]);
+        $this->assertNull($unassignedStudent->fresh()->professor_id);
+
+        $this->actingAs($hod)
+            ->post(route('hod.professors.assign-students', $professor), ['student_id' => $unassignedStudent->id])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('hod.professors.show', $professor));
+
+        $this->assertSame($professor->id, $unassignedStudent->fresh()->professor_id);
+        $this->assertSame($professor->id, $assignedStudent->fresh()->professor_id);
+
+        $this->actingAs($hod)->get(route('hod.dashboard'))
+            ->assertViewHas('stats', fn ($stats) => $stats['Students'] === 2 && $stats['Professors'] === 2 && $stats['Unassigned students'] === 0 && $stats['Professors without students'] === 1)
+            ->assertSee('Professor Mehta')
+            ->assertDontSee('Unassigned Learner');
+    }
+
     #[TestWith(['student', true])]
     #[TestWith(['hod', true])]
     #[TestWith(['professor', false])]

@@ -10,6 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
 
@@ -47,8 +48,22 @@ class ProfessorController extends Controller
     {
         abort_unless($professor->isProfessor(), 404);
         $students = $professor->assignedStudents()->with('studentProfile')->withCount('encounters')->orderBy('name')->paginate(15);
+        $availableStudents = User::where('role', UserRole::Student)->whereNull('professor_id')->orderBy('name')->get();
 
-        return view('professors.show', compact('professor', 'students'));
+        return view('professors.show', compact('professor', 'students', 'availableStudents'));
+    }
+
+    public function assignStudents(Request $request, User $professor): RedirectResponse
+    {
+        abort_unless($professor->isProfessor(), 404);
+        $student = User::where('role', UserRole::Student)
+            ->whereKey($request->validate(['student_id' => ['required', 'integer', Rule::exists('users', 'id')->where('role', UserRole::Student)]])['student_id'])
+            ->firstOrFail();
+
+        $student->professor_id = $professor->id;
+        $student->save();
+
+        return redirect()->route('hod.professors.show', $professor)->with('success', 'Student assigned to professor.');
     }
 
     public function edit(User $professor): View
